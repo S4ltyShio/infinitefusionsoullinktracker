@@ -1,100 +1,155 @@
+# storage.py
 import json
 from pathlib import Path
+from typing import Dict, Any, List, Optional
 import pandas as pd
-from typing import Dict, Any, List
 
-DATA_DIR = Path(__file__).parent / "data"
+# Paths
+BASE_DIR = Path(__file__).parent
+DATA_DIR = BASE_DIR / "data"
 STATE_PATH = DATA_DIR / "state.json"
 POKEDEX_CSV = DATA_DIR / "infinite_fusion_pokedex.csv"
 
+# ---------- Pokedex ----------
+
+def _coerce_int_series(s: pd.Series) -> pd.Series:
+    return pd.to_numeric(s, errors="coerce").astype("Int64")
+
+def _normalize_sprite_path(raw: Optional[str]) -> str:
+    if raw is None:
+        return ""
+    s = str(raw).strip()
+    if not s:
+        return ""
+    # URLs pass through
+    if s.startswith("http://") or s.startswith("https://") or s.startswith("data:"):
+        return s
+    # Fix Windows backslashes
+    s = s.replace("\\", "/")
+    # Make absolute relative to repo
+    p = (BASE_DIR / s).resolve()
+    if p.is_file():
+        return str(p)
+    # Fallback: if only a filename was provided, try sprites/<file>
+    p2 = (BASE_DIR / "sprites" / Path(s).name).resolve()
+    if p2.is_file():
+        return str(p2)
+    # If not found, return empty so Streamlit won't try to open
+    return ""
+
 def load_pokedex(csv_path: Path = POKEDEX_CSV) -> pd.DataFrame:
     df = pd.read_csv(csv_path)
-    # Normalize column names
-    cols = {c.lower(): c for c in df.columns}
-    for required in ["number", "name", "sprite_path_or_url"]:
-        if required not in [c.lower() for c in df.columns]:
-            raise ValueError(f"CSV missing required column: {required}")
-    # Re-map to consistent names
-    df = df.rename(columns={cols.get("number"): "number",
-                            cols.get("name"): "name",
-                            cols.get("sprite_path_or_url"): "sprite"})
-    # Ensure types
-    try:
-        df["number"] = df["number"].astype(int)
-    except Exception:
-        # If numbers like '001', coerce
-        df["number"] = pd.to_numeric(df["number"], errors="coerce").astype("Int64")
-    return df
 
-def initial_state() -> Dict[str, Any]:
-    return {
-        "pairings": [],   # list of pairing dicts
-        "fusions": [],
-        "graveyard": [],    # list of fusion dicts
-        "next_pair_id": 1,
-        "next_fusion_id": 1,
-        "players": ["Player 1", "Player 2"],
-        # for forward compatibility
-        "version": 1,
-    }
+    # Map flexible column names -> canonical
+    lower_map = {c.lower(): c for c in df.columns}
+    num_col = lower_map.get("number") or lower_map.get("#") or list(df.columns)[0]
+    name_col = lower_map.get("name") or list(df.columns)[1]
 
-def load_state() -> Dict[str, Any]:
-    if STATE_PATH.exists():
-        try:
-            return json.loads(STATE_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            # Fall back to fresh state if file corrupted
-            return initial_state()
-    return initial_state()
+    # sprite column can be named a few ways
+    sprite_col = (
+        lower_map.get("sprite")
+        or lower_map.get("sprite_path_or_url")
+        or lower_map.get("sprite_path")
+        or lower_map.get("image")
+        or lower_map.get("image_path")
+        or None
+    )
+    # Build a normalized frame
+    out = pd.DataFrame(
+        {
+            "number": _coerce_int_series(df[num_col]),
+            "name": df[name_col].astype(str),
+        }
+    )
+    if sprite_col:
+        out["sprite"] = df[sprite_col].map(_normalize_sprite_path)
+    else:
+        out["sprite"] = ""
 
-def save_state(state: Dict[str, Any]) -> None:
-    STATE_PATH.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+    return out
+
+# ---------- Lookups ----------
 
 def sprite_for(df: pd.DataFrame, number: int) -> str:
-    row = df.loc[df["number"] == number]
+    try:
+        n = int(number)
+    except Exception:
+        return ""
+    row = df.loc[df["number"] == n]
     if row.empty:
         return ""
-    return str(row.iloc[0]["sprite"])
+    val = str(row.iloc[0].get("sprite", "")).strip()
+    return val
 
 def name_for(df: pd.DataFrame, number: int) -> str:
-    row = df.loc[df["number"] == number]
+    try:
+        n = int(number)
+    except Exception:
+        return ""
+    row = df.loc[df["number"] == n]
     if row.empty:
-        return f"#{number}"
+        return ""
     return str(row.iloc[0]["name"])
 
 def search_options(df: pd.DataFrame) -> List[str]:
-    # Format: '#001 Bulbasaur'
-    def fmt(row):
-        num = row["number"]
-        nm = row["name"]
-        if pd.notna(num):
-            return f"#{int(num):03d} {nm}"
-        else:
-            return f"{nm}"
-    return [fmt(r) for _, r in df.iterrows()]
+    # e.g., "001 — Bulbasaur"
+    opts = [f"{int(n):03d} - {nm}" for n, nm in zip(df["number"].fillna(0), df["name"])]
+    return opts
 
-def parse_number_from_option(option: str) -> int:
-    # Option format '#001 Bulbasaur'
+def parse_number_from_option(option: str) -> Optional[int]:
+    # Accept "001 - Bulbasaur" or just "001"
+    if not option:
+        return None
+    part = str(option).split("-")[0].strip()
     try:
-        if option.startswith("#") and " " in option:
-            return int(option[1:4])
+        return int(part)
+    except Exception:
+        return None
+
+# ---------- State ----------
+
+def _default_state() -> Dict[str, Any]:
+    return {
+        "pairings": [],   # list of pairings {id, player1{number,name,used}, player2{...}, dead?}
+        "fusions": [],    # list of fusions {id, p1_number, p2_number, ...}
+        "graveyard": [],  # list of entries {"kind":"pokemon"/"pairing", ...}
+        "created_at": None,
+        "updated_at": None,
+    }
+
+def load_state() -> Dict[str, Any]:
+    try:
+        if STATE_PATH.is_file():
+            with STATE_PATH.open("r", encoding="utf-8") as f:
+                return json.load(f)
     except Exception:
         pass
-    # Fallback: no-op
-    return None
+    # Ensure directory exists for later saves
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    return _default_state()
 
+def save_state(state: Dict[str, Any]) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = STATE_PATH.with_suffix(".json.tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+    tmp.replace(STATE_PATH)
+
+# ---------- External links ----------
 
 def _slugify_name(name: str) -> str:
     import re, unicodedata
-    n = name.lower()
-    # Replace gender symbols
-    n = n.replace('♀', '-f').replace('♂', '-m').replace('.', '').replace("'", '').replace(':','')
-    # Normalize accents
-    n = unicodedata.normalize('NFKD', n).encode('ascii', 'ignore').decode('ascii')
-    # Replace spaces and non alphanum with hyphen
-    n = re.sub(r'[^a-z0-9]+', '-', n).strip('-')
+    n = str(name).lower()
+    n = (
+        n.replace("♀", "-f")
+        .replace("♂", "-m")
+        .replace(".", "")
+        .replace("'", "")
+        .replace(":", "")
+    )
+    n = unicodedata.normalize("NFKD", n).encode("ascii", "ignore").decode("ascii")
+    n = re.sub(r"[^a-z0-9]+", "-", n).strip("-")
     return n
 
 def pokemondb_url(name: str) -> str:
-    slug = _slugify_name(name)
-    return f"https://pokemondb.net/pokedex/{slug}"
+    return f"https://pokemondb.net/pokedex/{_slugify_name(name)}"
