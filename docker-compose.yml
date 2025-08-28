@@ -1,0 +1,12 @@
+services:
+  soullinktracker:
+    build: .
+    container_name: soullinktracker
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./sprites:/app/sprites
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
