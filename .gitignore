@@ -1,3 +1,27 @@
-/.venv
-/data
-/__pycache__
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.log
+
+# Envs
+.venv/
+env/
+venv/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# App state
+data/state.json
+data/*.bak
+data/*.tmp
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Build/artifacts
+*.zip
