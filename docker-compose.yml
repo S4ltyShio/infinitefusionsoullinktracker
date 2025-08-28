@@ -1,0 +1,14 @@
+version: '3.8'
+services:
+  soullinktracker:
+    image: python:3.10-slim
+    container_name: soullinktracker
+    working_dir: /app
+    volumes:
+      - ./:/app
+    ports:
+      - "8501:8501"
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: bash -c "pip install --upgrade pip && pip install -r requirements.txt && streamlit run app.py --server.port=8501 --server.address=0.0.0.0"
+    restart: unless-stopped
