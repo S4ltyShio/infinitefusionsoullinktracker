@@ -222,12 +222,9 @@ def evolve_pairing_mon(pid: str, side: str, new_number: int):
     if not p:
         st.error("Pairing not found.")
         return
-    # Prevent evolving buried or fused mons
+    # Prevent evolving buried mons, but allow evolving while fused
     if p.get("dead"):
         st.error("Cannot evolve. Pairing is in graveyard.")
-        return
-    if p[side].get("used"):
-        st.error("Cannot evolve. This Pokémon is currently fused.")
         return
 
     p[side]["number"] = int(new_number)
