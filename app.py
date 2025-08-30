@@ -1,10 +1,10 @@
 import streamlit as st
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 
 from storage import (
     load_pokedex, load_state, save_state, name_for,
-    search_options, parse_number_from_option
+    search_options, parse_number_from_option, get_evolutions
 )
 from ui_components import pairing_tile, fusion_card, graveyard_card
 
@@ -148,7 +148,6 @@ def bury_fusion(fid: str):
     pid_b = f["player1"]["b"]["pairing_id"]
     pair_ids = [pid_a, pid_b]
 
-    # add each pairing to graveyard if still present
     now = datetime.utcnow().isoformat()
     new_graves = []
     keep_pairings = []
@@ -165,11 +164,8 @@ def bury_fusion(fid: str):
         else:
             keep_pairings.append(p)
     state["pairings"] = keep_pairings
-
-    # remove the fusion
     state["fusions"] = [x for x in state["fusions"] if x["id"] != fid]
 
-    # clear any used flags based on remaining fusions
     recompute_used_flags()
     persist()
     if new_graves:
@@ -203,6 +199,73 @@ def delete_graveyard_pairing(pid: str):
     persist()
     st.success(f"Deleted graveyard pairing {pid}")
 
+# ---------------- Evolution helpers ----------------
+
+def _update_fusions_for_pairing(pid: str, evolved_side: str, new_number: int, new_name: str):
+    """Propagate evolved species into any fusion entries that reference this pairing.
+    evolved_side is 'player1' or 'player2' and updates only the matching side in fusions.
+    """
+    state = get_state()
+    for f in state["fusions"]:
+        for side in ("player1", "player2"):
+            for slot in ("a", "b"):
+                if f[side][slot]["pairing_id"] == pid:
+                    # Update the numbers/names only on the side that evolved
+                    if side == evolved_side:
+                        f[side][slot]["number"] = int(new_number)
+                        f[side][slot]["name"] = new_name
+
+def evolve_pairing_mon(pid: str, side: str, new_number: int):
+    """side: 'player1' or 'player2'."""
+    state = get_state()
+    p = next((x for x in state["pairings"] if x["id"] == pid), None)
+    if not p:
+        st.error("Pairing not found.")
+        return
+    # Prevent evolving buried or fused mons
+    if p.get("dead"):
+        st.error("Cannot evolve. Pairing is in graveyard.")
+        return
+    if p[side].get("used"):
+        st.error("Cannot evolve. This Pokémon is currently fused.")
+        return
+
+    p[side]["number"] = int(new_number)
+    p[side]["name"] = name_for(pokedex, new_number)
+
+    _update_fusions_for_pairing(pid, side, int(new_number), p[side]["name"])
+    persist()
+    st.success(f"Evolved {pid} {side} to #{int(new_number):03d} {p[side]['name']}")
+
+def evolution_controls(pid: str, side: str, current_number: int):
+    """Inline UI for evolving a single Pokémon."""
+    evos: List[Tuple[int, str]] = get_evolutions(pokedex, int(current_number))
+    if not evos:
+        st.caption("No evolutions available")
+        return
+
+    if len(evos) == 1:
+        n, nm = evos[0]
+        if st.button(f"Evolve {side[-1]} → #{n:03d}", key=f"evolve_one_{pid}_{side}"):
+            evolve_pairing_mon(pid, side, n)
+            st.rerun()
+        return
+
+    # Multiple evolutions: choose then confirm
+    labels = [f"{n:03d} - {nm}" for n, nm in evos]
+    sel = st.selectbox(
+        f"Evolve {side[-1]}",
+        labels,
+        key=f"evo_sel_{pid}_{side}",
+        index=None,
+        placeholder="Choose evolution",
+    )
+    if st.button("Confirm evolve", key=f"evo_confirm_{pid}_{side}", disabled=sel is None):
+        idx = labels.index(sel)
+        n, _ = evos[idx]
+        evolve_pairing_mon(pid, side, n)
+        st.rerun()
+
 def reset_state_confirm():
     if st.button("Reset all state", type="secondary"):
         st.session_state["state"] = {
@@ -216,6 +279,8 @@ def reset_state_confirm():
         }
         persist()
         st.success("State cleared.")
+
+# ---------------- App ----------------
 
 pokedex = get_pokedex()
 state = get_state()
@@ -253,6 +318,7 @@ with tabs[0]:
         pairs = [p for p in state["pairings"] if not p.get("dead")]
         if show_only_unfused:
             pairs = [p for p in pairs if not (p["player1"]["used"] or p["player2"]["used"])]
+
         for i in range(0, len(pairs), 3):
             cols = st.columns(3)
             for j in range(3):
@@ -262,6 +328,14 @@ with tabs[0]:
                 p = pairs[k]
                 with cols[j]:
                     pairing_tile(pokedex, p)
+
+                    # evolve controls for Player 1 and Player 2
+                    evo_cols = st.columns(2)
+                    with evo_cols[0]:
+                        evolution_controls(p["id"], "player1", p["player1"]["number"])
+                    with evo_cols[1]:
+                        evolution_controls(p["id"], "player2", p["player2"]["number"])
+
                     disabled = p["player1"]["used"] or p["player2"]["used"]
                     btns = st.columns(2)
                     with btns[0]:

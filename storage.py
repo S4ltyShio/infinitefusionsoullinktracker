@@ -1,4 +1,3 @@
-# storage.py
 import json
 import os
 import time
@@ -53,6 +52,8 @@ def load_pokedex(csv_path: Path = POKEDEX_CSV) -> pd.DataFrame:
         or lower_map.get("image_path")
         or None
     )
+    evo_nums_col = lower_map.get("evolves_to_numbers")
+    evo_names_col = lower_map.get("evolves_to_names")
 
     out = pd.DataFrame(
         {
@@ -61,6 +62,17 @@ def load_pokedex(csv_path: Path = POKEDEX_CSV) -> pd.DataFrame:
         }
     )
     out["sprite"] = df[sprite_col].map(_normalize_sprite_path) if sprite_col else ""
+
+    # Preserve evolution columns if present
+    if evo_nums_col in df.columns:
+        out["evolves_to_numbers"] = df[evo_nums_col].astype(str)
+    else:
+        out["evolves_to_numbers"] = ""
+    if evo_names_col in df.columns:
+        out["evolves_to_names"] = df[evo_names_col].astype(str)
+    else:
+        out["evolves_to_names"] = ""
+
     return out
 
 # ---------- Lookups ----------
