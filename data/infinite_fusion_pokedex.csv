@@ -42,7 +42,7 @@ number,name,sprite_path_or_url,evolves_to_numbers,evolves_to_names
 41,Zubat,sprites\041_Zubat.png,42,Golbat
 42,Golbat,sprites\042_Golbat.png,169,Crobat
 43,Oddish,sprites\043_Oddish.png,44,Gloom
-44,Gloom,sprites\044_Gloom.png,45;182,Vileplume;Bellossom
+44,Gloom,sprites\044_Gloom.png,45|182,Vileplume|Bellossom
 45,Vileplume,sprites\045_Vileplume.png,,
 46,Paras,sprites\046_Paras.png,47,Parasect
 47,Parasect,sprites\047_Parasect.png,,
@@ -59,7 +59,7 @@ number,name,sprite_path_or_url,evolves_to_numbers,evolves_to_names
 58,Growlithe,sprites\058_Growlithe.png,59,Arcanine
 59,Arcanine,sprites\059_Arcanine.png,,
 60,Poliwag,sprites\060_Poliwag.png,61,Poliwhirl
-61,Poliwhirl,sprites\061_Poliwhirl.png,62;186,Poliwrath;Politoed
+61,Poliwhirl,sprites\061_Poliwhirl.png,62|186,Poliwrath|Politoed
 62,Poliwrath,sprites\062_Poliwrath.png,,
 63,Abra,sprites\063_Abra.png,64,Kadabra
 64,Kadabra,sprites\064_Kadabra.png,65,Alakazam
@@ -77,7 +77,7 @@ number,name,sprite_path_or_url,evolves_to_numbers,evolves_to_names
 76,Golem,sprites\076_Golem.png,,
 77,Ponyta,sprites\077_Ponyta.png,78,Rapidash
 78,Rapidash,sprites\078_Rapidash.png,,
-79,Slowpoke,sprites\079_Slowpoke.png,80;199,Slowbro;Slowking
+79,Slowpoke,sprites\079_Slowpoke.png,80|199,Slowbro|Slowking
 80,Slowbro,sprites\080_Slowbro.png,,
 81,Magnemite,sprites\081_Magnemite.png,82,Magneton
 82,Magneton,sprites\082_Magneton.png,263,Magnezone
@@ -131,7 +131,7 @@ number,name,sprite_path_or_url,evolves_to_numbers,evolves_to_names
 130,Gyarados,sprites\130_Gyarados.png,,
 131,Lapras,sprites\131_Lapras.png,,
 132,Ditto,sprites\132_Ditto.png,,
-133,Eevee,sprites\133_Eevee.png,134;135;136;196;197;271;272;339,"Vaporeon;Jolteon;Flareon;Espeon;Umbreon;Leafeon;Glaceon;Sylveon"
+133,Eevee,sprites\133_Eevee.png,134|135|136|196|197|271|272|339,"Vaporeon|Jolteon|Flareon|Espeon|Umbreon|Leafeon|Glaceon|Sylveon"
 134,Vaporeon,sprites\134_Vaporeon.png,,
 135,Jolteon,sprites\135_Jolteon.png,,
 136,Flareon,sprites\136_Flareon.png,,
@@ -234,7 +234,7 @@ number,name,sprite_path_or_url,evolves_to_numbers,evolves_to_names
 233,Porygon2,sprites\233_Porygon2.png,275,Porygon-Z
 234,Stantler,sprites\234_Stantler.png,,
 235,Smeargle,sprites\235_Smeargle.png,,
-236,Tyrogue,sprites\236_Tyrogue.png,106;107;237,Hitmonlee;Hitmonchan;Hitmontop
+236,Tyrogue,sprites\236_Tyrogue.png,106|107|237,Hitmonlee|Hitmonchan|Hitmontop
 237,Hitmontop,sprites\237_Hitmontop.png,,
 238,Smoochum,sprites\238_Smoochum.png,124,Jynx
 239,Elekid,sprites\239_Elekid.png,125,Electabuzz
@@ -284,7 +284,7 @@ number,name,sprite_path_or_url,evolves_to_numbers,evolves_to_names
 283,Marshtomp,sprites\283_Marshtomp.png,284,Swampert
 284,Swampert,sprites\284_Swampert.png,,
 285,Ralts,sprites\285_Ralts.png,286,Kirlia
-286,Kirlia,sprites\286_Kirlia.png,287;288,Gardevoir;Gallade
+286,Kirlia,sprites\286_Kirlia.png,287|288,Gardevoir|Gallade
 287,Gardevoir,sprites\287_Gardevoir.png,,
 288,Gallade,sprites\288_Gallade.png,,
 289,Shedinja,sprites\289_Shedinja.png,,
@@ -380,7 +380,7 @@ number,name,sprite_path_or_url,evolves_to_numbers,evolves_to_names
 379,Latios,sprites\379_Latios.png,,
 380,Deoxys,sprites\380_Deoxys.png,,
 381,Jirachi,sprites\381_Jirachi.png,,
-382,Nincada,sprites\382_Nincada.png,356;289,Ninjask;Shedinja
+382,Nincada,sprites\382_Nincada.png,356|289,Ninjask|Shedinja
 383,Bibarel,sprites\383_Bibarel.png,,
 384,Riolu,sprites\384_Riolu.png,296,Lucario
 385,Slakoth,sprites\385_Slakoth.png,386,Vigoroth
@@ -425,7 +425,7 @@ number,name,sprite_path_or_url,evolves_to_numbers,evolves_to_names
 424,Scolipede,sprites\424_Scolipede.png,,
 425,Tyrunt,sprites\425_Tyrunt.png,426,Tyrantrum
 426,Tyrantrum,sprites\426_Tyrantrum.png,,
-427,Snorunt,sprites\427_Snorunt.png,428;429,Glalie;Froslass
+427,Snorunt,sprites\427_Snorunt.png,428|429,Glalie|Froslass
 428,Glalie,sprites\428_Glalie.png,,
 429,Froslass,sprites\429_Froslass.png,,
 430,Oricorio,sprites\430_Oricorio.png,,
@@ -461,7 +461,7 @@ number,name,sprite_path_or_url,evolves_to_numbers,evolves_to_names
 460,Palossand,sprites\460_Palossand.png,,
 461,Amaura,sprites\461_Amaura.png,462,Aurorus
 462,Aurorus,sprites\462_Aurorus.png,,
-463,Rockruff,sprites\463_Rockruff.png,464;465,Lycanroc;Lycanroc
+463,Rockruff,sprites\463_Rockruff.png,464|465,Lycanroc|Lycanroc
 464,Lycanroc,sprites\464_Lycanroc.png,,
 465,Lycanroc,sprites\465_Lycanroc.png,,
 466,Meloetta,sprites\466_Meloetta.png,,
@@ -504,7 +504,7 @@ number,name,sprite_path_or_url,evolves_to_numbers,evolves_to_names
 503,Mightyena,sprites\503_Mightyena.png,,
 504,Zigzagoon,sprites\504_Zigzagoon.png,505,Linoone
 505,Linoone,sprites\505_Linoone.png,,
-506,Wurmple,sprites\506_Wurmple.png,507;509,Silcoon;Cascoon
+506,Wurmple,sprites\506_Wurmple.png,507|509,Silcoon|Cascoon
 507,Silcoon,sprites\507_Silcoon.png,508,Beautifly
 508,Beautifly,sprites\508_Beautifly.png,,
 509,Cascoon,sprites\509_Cascoon.png,510,Dustox
@@ -560,7 +560,7 @@ number,name,sprite_path_or_url,evolves_to_numbers,evolves_to_names
 559,Spheal,sprites\559_Spheal.png,560,Sealeo
 560,Sealeo,sprites\560_Sealeo.png,561,Walrein
 561,Walrein,sprites\561_Walrein.png,,
-562,Clamperl,sprites\562_Clamperl.png,563;564,Huntail;Gorebyss
+562,Clamperl,sprites\562_Clamperl.png,563|564,Huntail|Gorebyss
 563,Huntail,sprites\563_Huntail.png,,
 564,Gorebyss,sprites\564_Gorebyss.png,,
 565,Relicanth,sprites\565_Relicanth.png,,
