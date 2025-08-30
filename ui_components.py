@@ -1,21 +1,64 @@
+import os
+import base64
+from functools import lru_cache
 import streamlit as st
 from typing import Dict, Any
 import pandas as pd
-from storage import sprite_for, name_for, pokemondb_url
+from storage import sprite_for, name_for
+
+# ---------- URLs ----------
+
+def ifdex_mon_url(number: int) -> str:
+    return f"https://infinitefusiondex.com/details/{int(number)}"
+
+def ifdex_fusion_url(a: int, b: int) -> str:
+    return f"https://infinitefusiondex.com/details/{int(a)}.{int(b)}"
 
 def fusion_sprite_url(first_number: int, second_number: int) -> str:
     # Orientation matters: first.second
     return f"https://ifd-spaces.sfo2.cdn.digitaloceanspaces.com/custom/{int(first_number)}.{int(second_number)}.png"
+
+# ---------- HTML image helpers ----------
+
+@lru_cache(maxsize=2048)
+def _path_to_data_uri(path: str) -> str:
+    try:
+        with open(path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("ascii")
+        return f"data:image/png;base64,{b64}"
+    except Exception:
+        return ""
+
+def _img_src(sprite: str) -> str:
+    if not sprite:
+        return ""
+    s = str(sprite)
+    if s.startswith("http://") or s.startswith("https://") or s.startswith("data:"):
+        return s
+    if os.path.isfile(s):
+        return _path_to_data_uri(s)
+    return ""
+
+def clickable_sprite(sprite_path_or_url: str, link_url: str, width: int = 96, caption: str | None = None):
+    src = _img_src(sprite_path_or_url)
+    if not src:
+        return
+    html = f'<a href="{link_url}" target="_blank"><img src="{src}" width="{width}"></a>'
+    st.markdown(html, unsafe_allow_html=True)
+    if caption:
+        st.caption(caption)
+
+# ---------- UI components ----------
 
 def pokemon_display(df: pd.DataFrame, number: int, caption: str = "", width: int = 96):
     cols = st.columns([1, 2])
     with cols[0]:
         sprite = sprite_for(df, number)
         if sprite:
-            st.image(sprite, width=width)
+            clickable_sprite(sprite, ifdex_mon_url(number), width=width)
     with cols[1]:
         nm = name_for(df, number)
-        st.markdown(f"**#{int(number):03d} {nm}** · [PokémonDB]({pokemondb_url(nm)})")
+        st.markdown(f"**#{int(number):03d} {nm}** · [InfiniteFusionDex]({ifdex_mon_url(number)})")
         if caption:
             st.caption(caption)
 
@@ -37,14 +80,14 @@ def pairing_tile(df: pd.DataFrame, pairing: Dict[str, Any]):
     with st.container(border=True):
         c = st.columns([1, 1])
         with c[0]:
-            s = sprite_for(df, pairing["player1"]["number"])
-            if s:
-                st.image(s, width=64)
+            s1 = sprite_for(df, pairing["player1"]["number"])
+            if s1:
+                clickable_sprite(s1, ifdex_mon_url(pairing["player1"]["number"]), width=64)
             st.caption(f"#{int(pairing['player1']['number']):03d}")
         with c[1]:
             s2 = sprite_for(df, pairing["player2"]["number"])
             if s2:
-                st.image(s2, width=64)
+                clickable_sprite(s2, ifdex_mon_url(pairing["player2"]["number"]), width=64)
             st.caption(f"#{int(pairing['player2']['number']):03d}")
         enc = pairing["player1"].get("encounter") or pairing["player2"].get("encounter") or ""
         if enc:
@@ -62,30 +105,27 @@ def fusion_card(df: pd.DataFrame, fusion: Dict[str, Any]):
         a2 = fusion["player2"]["a"]
         b2 = fusion["player2"]["b"]
 
-        # Base components with single-mon Dex links
+        # Base components: sprite is clickable to InfiniteFusionDex mon page
         c_base = st.columns(4)
         for col, mon in zip(c_base, [a, b, a2, b2]):
             with col:
                 spr = sprite_for(df, mon["number"])
                 if spr:
-                    st.image(spr, width=96)
+                    clickable_sprite(spr, ifdex_mon_url(mon["number"]), width=96)
                 st.caption(f"#{int(mon['number']):03d} {mon['name']}")
-                st.markdown(f"[Dex](https://infinitefusiondex.com/details/{int(mon['number'])})")
 
         st.divider()
 
-        # Fused sprites for both players with fusion details links
+        # Fused sprites: clickable to fusion details
         c_fused = st.columns(2)
         with c_fused[0]:
-            url = fusion_sprite_url(a["number"], b["number"])
-            st.image(url, width=144)
-            st.caption(f"Fused: {a['name']} + {b['name']}")
-            st.markdown(f"[Details](https://infinitefusiondex.com/details/{int(a['number'])}.{int(b['number'])})")
+            fused_src = fusion_sprite_url(a["number"], b["number"])
+            clickable_sprite(fused_src, ifdex_fusion_url(a["number"], b["number"]), width=144,
+                             caption=f"Fused: {a['name']} + {b['name']}")
         with c_fused[1]:
-            url2 = fusion_sprite_url(a2["number"], b2["number"])
-            st.image(url2, width=144)
-            st.caption(f"Fused: {a2['name']} + {b2['name']}")
-            st.markdown(f"[Details](https://infinitefusiondex.com/details/{int(a2['number'])}.{int(b2['number'])})")
+            fused_src2 = fusion_sprite_url(a2["number"], b2["number"])
+            clickable_sprite(fused_src2, ifdex_fusion_url(a2["number"], b2["number"]), width=144,
+                             caption=f"Fused: {a2['name']} + {b2['name']}")
 
 def graveyard_card(df: pd.DataFrame, entry: Dict[str, Any]):
     kind = entry.get("kind")

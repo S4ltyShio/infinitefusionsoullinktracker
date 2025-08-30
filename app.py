@@ -18,6 +18,10 @@ def get_state() -> Dict[str, Any]:
     if "state" not in st.session_state:
         st.session_state["state"] = load_state()
     st.session_state["state"].setdefault("graveyard", [])
+    st.session_state["state"].setdefault("pairings", [])
+    st.session_state["state"].setdefault("fusions", [])
+    st.session_state["state"].setdefault("next_pair_id", 1)
+    st.session_state["state"].setdefault("next_fusion_id", 1)
     return st.session_state["state"]
 
 def persist():
@@ -119,7 +123,7 @@ def send_pairing_to_graveyard(pid: str):
         st.error("Pairing not found.")
         return
     if p["player1"]["used"] or p["player2"]["used"]:
-        st.error("Cannot bury. Pairing is in a fusion. Unfuse or bury that fusion.")
+        st.error("Cannot send to graveyard. Pairing is in a fusion.")
         return
     state["graveyard"].append({
         "kind": "pairing",
@@ -133,27 +137,71 @@ def send_pairing_to_graveyard(pid: str):
     st.success(f"Sent pairing {pid} to graveyard.")
 
 def bury_fusion(fid: str):
+    """Remove fusion and move both involved pairings to graveyard as 'pairing' entries."""
     state = get_state()
     f = next((x for x in state["fusions"] if x["id"] == fid), None)
     if not f:
         st.error("Fusion not found.")
         return
-    state["graveyard"].append({
-        "kind": "fusion",
-        "id": fid,
-        "created_at": datetime.utcnow().isoformat(),
-        "player1": {"a_num": f["player1"]["a"]["number"], "b_num": f["player1"]["b"]["number"]},
-        "player2": {"a_num": f["player2"]["a"]["number"], "b_num": f["player2"]["b"]["number"]},
-    })
-    state["fusions"] = [x for x in state["fusions"] if x["id"] != fid]
-    dead_ids = {f["player1"]["a"]["pairing_id"], f["player1"]["b"]["pairing_id"]}
+
+    pid_a = f["player1"]["a"]["pairing_id"]
+    pid_b = f["player1"]["b"]["pairing_id"]
+    pair_ids = [pid_a, pid_b]
+
+    # add each pairing to graveyard if still present
+    now = datetime.utcnow().isoformat()
+    new_graves = []
+    keep_pairings = []
     for p in state["pairings"]:
-        if p["id"] in dead_ids:
-            p["dead"] = True
-            p["player1"]["used"] = True
-            p["player2"]["used"] = True
+        if p["id"] in pair_ids:
+            state["graveyard"].append({
+                "kind": "pairing",
+                "id": p["id"],
+                "player1": {"number": p["player1"]["number"]},
+                "player2": {"number": p["player2"]["number"]},
+                "created_at": now,
+            })
+            new_graves.append(p["id"])
+        else:
+            keep_pairings.append(p)
+    state["pairings"] = keep_pairings
+
+    # remove the fusion
+    state["fusions"] = [x for x in state["fusions"] if x["id"] != fid]
+
+    # clear any used flags based on remaining fusions
+    recompute_used_flags()
     persist()
-    st.success(f"Sent fusion {fid} to graveyard.")
+    if new_graves:
+        st.success(f"send {fid} to graveyard: sent pairings {', '.join(new_graves)} to graveyard.")
+    else:
+        st.success(f"send {fid} to graveyard: fusion removed. No pairings found to bury.")
+
+def delete_pairing(pid: str):
+    state = get_state()
+    p = next((x for x in state["pairings"] if x["id"] == pid), None)
+    if not p:
+        st.error("Pairing not found.")
+        return
+    if p["player1"]["used"] or p["player2"]["used"]:
+        st.error("Cannot delete. Pairing is in a fusion. Unfuse or bury the fusion first.")
+        return
+    state["pairings"] = [x for x in state["pairings"] if x["id"] != pid]
+    persist()
+    st.success(f"Deleted pairing {pid}")
+
+def delete_graveyard_pairing(pid: str):
+    state = get_state()
+    before = len(state["graveyard"])
+    state["graveyard"] = [
+        g for g in state["graveyard"]
+        if not (g.get("kind") == "pairing" and g.get("id") == pid)
+    ]
+    if len(state["graveyard"]) == before:
+        st.error("Graveyard pairing not found.")
+        return
+    persist()
+    st.success(f"Deleted graveyard pairing {pid}")
 
 def reset_state_confirm():
     if st.button("Reset all state", type="secondary"):
@@ -215,9 +263,15 @@ with tabs[0]:
                 with cols[j]:
                     pairing_tile(pokedex, p)
                     disabled = p["player1"]["used"] or p["player2"]["used"]
-                    if st.button(f"Send {p['id']} to graveyard", key=f"grave_{p['id']}", disabled=disabled):
-                        send_pairing_to_graveyard(p['id'])
-                        st.rerun()
+                    btns = st.columns(2)
+                    with btns[0]:
+                        if st.button(f"Send {p['id']} to graveyard", key=f"grave_{p['id']}", disabled=disabled):
+                            send_pairing_to_graveyard(p['id'])
+                            st.rerun()
+                    with btns[1]:
+                        if st.button(f"Delete {p['id']}", key=f"del_{p['id']}", disabled=disabled):
+                            delete_pairing(p['id'])
+                            st.rerun()
 
 with tabs[1]:
     st.subheader("Create a fusion")
@@ -261,7 +315,7 @@ with tabs[1]:
                             unfuse_fusion(f['id'])
                             st.rerun()
                     with btns[1]:
-                        if st.button(f"Bury {f['id']}", key=f"bury_{f['id']}"):
+                        if st.button(f"Send {f['id']} to graveyard", key=f"bury_{f['id']}"):
                             bury_fusion(f['id'])
                             st.rerun()
 
@@ -270,8 +324,12 @@ with tabs[2]:
     if not state.get("graveyard"):
         st.info("Graveyard is empty.")
     else:
-        for g in reversed(state["graveyard"]):
+        for g in list(reversed(state["graveyard"])):
             graveyard_card(pokedex, g)
+            if g.get("kind") == "pairing":
+                if st.button(f"Delete {g['id']}", key=f"del_grave_{g['id']}"):
+                    delete_graveyard_pairing(g['id'])
+                    st.rerun()
 
 with tabs[3]:
     st.subheader("Settings")

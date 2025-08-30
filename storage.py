@@ -1,5 +1,7 @@
 # storage.py
 import json
+import os
+import time
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 import pandas as pd
@@ -21,31 +23,28 @@ def _normalize_sprite_path(raw: Optional[str]) -> str:
     s = str(raw).strip()
     if not s:
         return ""
-    # URLs pass through
-    if s.startswith("http://") or s.startswith("https://") or s.startswith("data:"):
+    # Pass through URLs and data URIs
+    if s.startswith(("http://", "https://", "data:")):
         return s
-    # Fix Windows backslashes
+    # Normalize slashes for cross-platform use
     s = s.replace("\\", "/")
-    # Make absolute relative to repo
+    # Try path as given, relative to repo
     p = (BASE_DIR / s).resolve()
     if p.is_file():
         return str(p)
-    # Fallback: if only a filename was provided, try sprites/<file>
+    # Fallback: look in sprites/ by filename
     p2 = (BASE_DIR / "sprites" / Path(s).name).resolve()
     if p2.is_file():
         return str(p2)
-    # If not found, return empty so Streamlit won't try to open
     return ""
 
 def load_pokedex(csv_path: Path = POKEDEX_CSV) -> pd.DataFrame:
     df = pd.read_csv(csv_path)
 
-    # Map flexible column names -> canonical
+    # Flexible column detection
     lower_map = {c.lower(): c for c in df.columns}
     num_col = lower_map.get("number") or lower_map.get("#") or list(df.columns)[0]
     name_col = lower_map.get("name") or list(df.columns)[1]
-
-    # sprite column can be named a few ways
     sprite_col = (
         lower_map.get("sprite")
         or lower_map.get("sprite_path_or_url")
@@ -54,18 +53,14 @@ def load_pokedex(csv_path: Path = POKEDEX_CSV) -> pd.DataFrame:
         or lower_map.get("image_path")
         or None
     )
-    # Build a normalized frame
+
     out = pd.DataFrame(
         {
             "number": _coerce_int_series(df[num_col]),
             "name": df[name_col].astype(str),
         }
     )
-    if sprite_col:
-        out["sprite"] = df[sprite_col].map(_normalize_sprite_path)
-    else:
-        out["sprite"] = ""
-
+    out["sprite"] = df[sprite_col].map(_normalize_sprite_path) if sprite_col else ""
     return out
 
 # ---------- Lookups ----------
@@ -78,8 +73,7 @@ def sprite_for(df: pd.DataFrame, number: int) -> str:
     row = df.loc[df["number"] == n]
     if row.empty:
         return ""
-    val = str(row.iloc[0].get("sprite", "")).strip()
-    return val
+    return str(row.iloc[0].get("sprite", "")).strip()
 
 def name_for(df: pd.DataFrame, number: int) -> str:
     try:
@@ -92,12 +86,9 @@ def name_for(df: pd.DataFrame, number: int) -> str:
     return str(row.iloc[0]["name"])
 
 def search_options(df: pd.DataFrame) -> List[str]:
-    # e.g., "001 — Bulbasaur"
-    opts = [f"{int(n):03d} - {nm}" for n, nm in zip(df["number"].fillna(0), df["name"])]
-    return opts
+    return [f"{int(n):03d} - {nm}" for n, nm in zip(df["number"].fillna(0), df["name"])]
 
 def parse_number_from_option(option: str) -> Optional[int]:
-    # Accept "001 - Bulbasaur" or just "001"
     if not option:
         return None
     part = str(option).split("-")[0].strip()
@@ -110,9 +101,9 @@ def parse_number_from_option(option: str) -> Optional[int]:
 
 def _default_state() -> Dict[str, Any]:
     return {
-        "pairings": [],   # list of pairings {id, player1{number,name,used}, player2{...}, dead?}
-        "fusions": [],    # list of fusions {id, p1_number, p2_number, ...}
-        "graveyard": [],  # list of entries {"kind":"pokemon"/"pairing", ...}
+        "pairings": [],
+        "fusions": [],
+        "graveyard": [],
         "created_at": None,
         "updated_at": None,
     }
@@ -124,16 +115,43 @@ def load_state() -> Dict[str, Any]:
                 return json.load(f)
     except Exception:
         pass
-    # Ensure directory exists for later saves
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     return _default_state()
 
 def save_state(state: Dict[str, Any]) -> None:
+    """
+    Cross-platform safe save.
+    1) Write to temp file.
+    2) Atomically replace target via os.replace().
+    3) Retry on PermissionError (Windows file locks).
+    4) Fallback to direct write if needed.
+    """
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     tmp = STATE_PATH.with_suffix(".json.tmp")
+
+    # Write temp
     with tmp.open("w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
-    tmp.replace(STATE_PATH)
+
+    # Atomic replace with retries
+    for attempt in range(6):
+        try:
+            os.replace(tmp, STATE_PATH)  # atomic on Linux and Windows
+            return
+        except PermissionError:
+            time.sleep(0.25 * (attempt + 1))
+        except Exception:
+            break
+
+    # Fallback direct write
+    try:
+        with STATE_PATH.open("w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 # ---------- External links ----------
 
@@ -154,12 +172,11 @@ def _slugify_name(name: str) -> str:
 def pokemondb_url(name: str) -> str:
     return f"https://pokemondb.net/pokedex/{_slugify_name(name)}"
 
-
 def _colmap(df):
     return {c.lower(): c for c in df.columns}
 
 def get_evolutions(df: pd.DataFrame, number: int):
-    """Return list of (num:int, name:str) next evolutions based on CSV columns
+    """Read evolutions from optional CSV columns:
     'evolves_to_numbers' and 'evolves_to_names'."""
     row = df.loc[df["number"] == number]
     if row.empty:
@@ -174,7 +191,7 @@ def get_evolutions(df: pd.DataFrame, number: int):
     if not nums_raw.strip():
         return []
     parts = [p.strip() for p in nums_raw.split("|")]
-    out_nums = []
+    out_nums: List[int] = []
     for p in parts:
         try:
             out_nums.append(int(p))
@@ -183,7 +200,7 @@ def get_evolutions(df: pd.DataFrame, number: int):
                 out_nums.append(int(p.lstrip("0") or "0"))
             except Exception:
                 pass
-    names = []
+    names: List[str] = []
     if name_col and name_col in df.columns:
         rawn = row.iloc[0][name_col]
         partsn = [p.strip() for p in str(rawn).split("|")] if pd.notna(rawn) else []
