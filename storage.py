@@ -153,3 +153,45 @@ def _slugify_name(name: str) -> str:
 
 def pokemondb_url(name: str) -> str:
     return f"https://pokemondb.net/pokedex/{_slugify_name(name)}"
+
+
+def _colmap(df):
+    return {c.lower(): c for c in df.columns}
+
+def get_evolutions(df: pd.DataFrame, number: int):
+    """Return list of (num:int, name:str) next evolutions based on CSV columns
+    'evolves_to_numbers' and 'evolves_to_names'."""
+    row = df.loc[df["number"] == number]
+    if row.empty:
+        return []
+    cols = _colmap(df)
+    num_col = cols.get("evolves_to_numbers")
+    name_col = cols.get("evolves_to_names")
+    if not num_col or num_col not in df.columns:
+        return []
+    raw = row.iloc[0][num_col]
+    nums_raw = str(raw) if pd.notna(raw) else ""
+    if not nums_raw.strip():
+        return []
+    parts = [p.strip() for p in nums_raw.split("|")]
+    out_nums = []
+    for p in parts:
+        try:
+            out_nums.append(int(p))
+        except ValueError:
+            try:
+                out_nums.append(int(p.lstrip("0") or "0"))
+            except Exception:
+                pass
+    names = []
+    if name_col and name_col in df.columns:
+        rawn = row.iloc[0][name_col]
+        partsn = [p.strip() for p in str(rawn).split("|")] if pd.notna(rawn) else []
+        for i, n in enumerate(out_nums):
+            if i < len(partsn) and partsn[i]:
+                names.append(partsn[i])
+            else:
+                names.append(name_for(df, n))
+    else:
+        names = [name_for(df, n) for n in out_nums]
+    return list(zip(out_nums, names))

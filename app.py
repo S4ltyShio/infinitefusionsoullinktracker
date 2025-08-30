@@ -2,8 +2,11 @@ import streamlit as st
 from datetime import datetime
 from typing import Dict, Any, List
 
-from storage import load_pokedex, load_state, save_state, name_for, search_options, parse_number_from_option
-from ui_components import pairing_card, fusion_card, graveyard_card
+from storage import (
+    load_pokedex, load_state, save_state, name_for,
+    search_options, parse_number_from_option
+)
+from ui_components import pairing_tile, fusion_card, graveyard_card
 
 st.set_page_config(page_title="Soullink Fusion Tracker", page_icon="🧬", layout="wide")
 
@@ -14,7 +17,6 @@ def get_pokedex():
 def get_state() -> Dict[str, Any]:
     if "state" not in st.session_state:
         st.session_state["state"] = load_state()
-    # Backfill new keys
     st.session_state["state"].setdefault("graveyard", [])
     return st.session_state["state"]
 
@@ -75,10 +77,9 @@ def create_fusion_from_player1(p1_pair_id_a: str, p1_pair_id_b: str):
             "b": {"pairing_id": pb["id"], "number": pb["player2"]["number"], "name": pb["player2"]["name"]},
         },
     }
-    # mark used
-    for side in ("player1","player2"):
-        for pair in (pa, pb):
-            pair[side]["used"] = True
+    for side in ("player1", "player2"):
+        pa[side]["used"] = True
+        pb[side]["used"] = True
 
     state["fusions"].append(fusion)
     state["next_fusion_id"] += 1
@@ -93,8 +94,8 @@ def recompute_used_flags():
         p["player2"]["used"] = dead
     pair_by_id = {p["id"]: p for p in state["pairings"]}
     for f in state["fusions"]:
-        for side in ["player1", "player2"]:
-            for slot in ["a", "b"]:
+        for side in ("player1", "player2"):
+            for slot in ("a", "b"):
                 pid = f[side][slot]["pairing_id"]
                 if pid in pair_by_id:
                     pair_by_id[pid][side]["used"] = True
@@ -111,7 +112,6 @@ def unfuse_fusion(fid: str):
     persist()
     st.success(f"Unfused {fid}")
 
-# Graveyard helpers
 def send_pairing_to_graveyard(pid: str):
     state = get_state()
     p = next((x for x in state["pairings"] if x["id"] == pid), None)
@@ -128,7 +128,6 @@ def send_pairing_to_graveyard(pid: str):
         "player2": {"number": p["player2"]["number"]},
         "created_at": datetime.utcnow().isoformat(),
     })
-    # Remove from active
     state["pairings"] = [x for x in state["pairings"] if x["id"] != pid]
     persist()
     st.success(f"Sent pairing {pid} to graveyard.")
@@ -139,7 +138,6 @@ def bury_fusion(fid: str):
     if not f:
         st.error("Fusion not found.")
         return
-    # Record in graveyard
     state["graveyard"].append({
         "kind": "fusion",
         "id": fid,
@@ -147,9 +145,7 @@ def bury_fusion(fid: str):
         "player1": {"a_num": f["player1"]["a"]["number"], "b_num": f["player1"]["b"]["number"]},
         "player2": {"a_num": f["player2"]["a"]["number"], "b_num": f["player2"]["b"]["number"]},
     })
-    # Remove fusion
     state["fusions"] = [x for x in state["fusions"] if x["id"] != fid]
-    # Mark the two pairings dead and used
     dead_ids = {f["player1"]["a"]["pairing_id"], f["player1"]["b"]["pairing_id"]}
     for p in state["pairings"]:
         if p["id"] in dead_ids:
@@ -178,19 +174,16 @@ state = get_state()
 recompute_used_flags()
 
 st.title("Pokémon Infinite Fusion Soullink Tracker")
-
 tabs = st.tabs(["Pairings", "Fusions", "Graveyard", "Settings"])
 
 with tabs[0]:
     st.subheader("Add a new pairing")
     col_add = st.columns(2)
     options = search_options(pokedex)
-
     with col_add[0]:
         p1_opt = st.selectbox("Player 1 Pokémon", options, key="p1_select", index=None, placeholder="Search species...")
     with col_add[1]:
         p2_opt = st.selectbox("Player 2 Pokémon", options, key="p2_select", index=None, placeholder="Search species...")
-
     encounter = st.text_input("Encounter", placeholder="e.g., Route 1, Cave, Gift")
 
     can_add = p1_opt and p2_opt and encounter.strip()
@@ -209,18 +202,22 @@ with tabs[0]:
         st.info("No pairings yet.")
     else:
         show_only_unfused = st.checkbox("Show only unfused", value=False)
-        for p in state["pairings"]:
-            if show_only_unfused and (p["player1"]["used"] or p["player2"]["used"]):
-                continue
-            if p.get("dead"):
-                continue
-            pairing_card(pokedex, p)
-            cols = st.columns([1,6])
-            with cols[0]:
-                disabled = p["player1"]["used"] or p["player2"]["used"]
-                if st.button(f"Send {p['id']} to graveyard", key=f"grave_{p['id']}", disabled=disabled):
-                    send_pairing_to_graveyard(p['id'])
-                    st.rerun()
+        pairs = [p for p in state["pairings"] if not p.get("dead")]
+        if show_only_unfused:
+            pairs = [p for p in pairs if not (p["player1"]["used"] or p["player2"]["used"])]
+        for i in range(0, len(pairs), 3):
+            cols = st.columns(3)
+            for j in range(3):
+                k = i + j
+                if k >= len(pairs):
+                    continue
+                p = pairs[k]
+                with cols[j]:
+                    pairing_tile(pokedex, p)
+                    disabled = p["player1"]["used"] or p["player2"]["used"]
+                    if st.button(f"Send {p['id']} to graveyard", key=f"grave_{p['id']}", disabled=disabled):
+                        send_pairing_to_graveyard(p['id'])
+                        st.rerun()
 
 with tabs[1]:
     st.subheader("Create a fusion")
@@ -248,17 +245,25 @@ with tabs[1]:
     if not state["fusions"]:
         st.info("No fusions yet.")
     else:
-        for f in list(state["fusions"]):
-            fusion_card(pokedex, f)
-            cols = st.columns([2,2,6])
-            with cols[0]:
-                if st.button(f"Unfuse {f['id']}", key=f"unfuse_{f['id']}"):
-                    unfuse_fusion(f['id'])
-                    st.rerun()
-            with cols[1]:
-                if st.button(f"Send {f['id']} to graveyard", key=f"bury_{f['id']}"):
-                    bury_fusion(f['id'])
-                    st.rerun()
+        items = list(state["fusions"])
+        for i in range(0, len(items), 2):
+            row = st.columns(2)
+            for j in range(2):
+                idx = i + j
+                if idx >= len(items):
+                    continue
+                f = items[idx]
+                with row[j]:
+                    fusion_card(pokedex, f)
+                    btns = st.columns(2)
+                    with btns[0]:
+                        if st.button(f"Unfuse {f['id']}", key=f"unfuse_{f['id']}"):
+                            unfuse_fusion(f['id'])
+                            st.rerun()
+                    with btns[1]:
+                        if st.button(f"Bury {f['id']}", key=f"bury_{f['id']}"):
+                            bury_fusion(f['id'])
+                            st.rerun()
 
 with tabs[2]:
     st.subheader("Graveyard")

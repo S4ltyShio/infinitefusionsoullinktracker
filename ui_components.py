@@ -1,5 +1,5 @@
 import streamlit as st
-from typing import Dict, Any, List
+from typing import Dict, Any
 import pandas as pd
 from storage import sprite_for, name_for, pokemondb_url
 
@@ -8,7 +8,7 @@ def fusion_sprite_url(first_number: int, second_number: int) -> str:
     return f"https://ifd-spaces.sfo2.cdn.digitaloceanspaces.com/custom/{int(first_number)}.{int(second_number)}.png"
 
 def pokemon_display(df: pd.DataFrame, number: int, caption: str = "", width: int = 96):
-    cols = st.columns([1,2])
+    cols = st.columns([1, 2])
     with cols[0]:
         sprite = sprite_for(df, number)
         if sprite:
@@ -33,6 +33,26 @@ def pairing_card(df: pd.DataFrame, pairing: Dict[str, Any]):
             st.caption("Player 2")
             st.caption("Fused" if p2.get("used") else "Unfused")
 
+def pairing_tile(df: pd.DataFrame, pairing: Dict[str, Any]):
+    with st.container(border=True):
+        c = st.columns([1, 1])
+        with c[0]:
+            s = sprite_for(df, pairing["player1"]["number"])
+            if s:
+                st.image(s, width=64)
+            st.caption(f"#{int(pairing['player1']['number']):03d}")
+        with c[1]:
+            s2 = sprite_for(df, pairing["player2"]["number"])
+            if s2:
+                st.image(s2, width=64)
+            st.caption(f"#{int(pairing['player2']['number']):03d}")
+        enc = pairing["player1"].get("encounter") or pairing["player2"].get("encounter") or ""
+        if enc:
+            st.caption(enc)
+        p1u = "Fused" if pairing["player1"].get("used") else "Unfused"
+        p2u = "Fused" if pairing["player2"].get("used") else "Unfused"
+        st.caption(f"P1: {p1u} · P2: {p2u}")
+
 def fusion_card(df: pd.DataFrame, fusion: Dict[str, Any]):
     with st.container(border=True):
         st.markdown(f"**Fusion {fusion['id']}**")
@@ -42,7 +62,7 @@ def fusion_card(df: pd.DataFrame, fusion: Dict[str, Any]):
         a2 = fusion["player2"]["a"]
         b2 = fusion["player2"]["b"]
 
-        # Base components, smaller
+        # Base components with single-mon Dex links
         c_base = st.columns(4)
         for col, mon in zip(c_base, [a, b, a2, b2]):
             with col:
@@ -50,10 +70,11 @@ def fusion_card(df: pd.DataFrame, fusion: Dict[str, Any]):
                 if spr:
                     st.image(spr, width=96)
                 st.caption(f"#{int(mon['number']):03d} {mon['name']}")
+                st.markdown(f"[Dex](https://infinitefusiondex.com/details/{int(mon['number'])})")
 
         st.divider()
 
-        # Fused sprites for both players, orientation preserved
+        # Fused sprites for both players with fusion details links
         c_fused = st.columns(2)
         with c_fused[0]:
             url = fusion_sprite_url(a["number"], b["number"])
@@ -66,18 +87,16 @@ def fusion_card(df: pd.DataFrame, fusion: Dict[str, Any]):
             st.caption(f"Fused: {a2['name']} + {b2['name']}")
             st.markdown(f"[Details](https://infinitefusiondex.com/details/{int(a2['number'])}.{int(b2['number'])})")
 
-
 def graveyard_card(df: pd.DataFrame, entry: Dict[str, Any]):
     kind = entry.get("kind")
     with st.container(border=True):
         if kind == "fusion":
             st.markdown(f"**Grave: Fusion {entry.get('id','')}**")
             cols = st.columns(2)
-            # Player 1 side
             with cols[0]:
                 a = int(entry["player1"]["a_num"])
                 b = int(entry["player1"]["b_num"])
-                row = st.columns([1,1,1.2])
+                row = st.columns([1, 1, 1.2])
                 with row[0]:
                     s = sprite_for(df, a)
                     if s: st.image(s, width=64)
@@ -90,11 +109,10 @@ def graveyard_card(df: pd.DataFrame, entry: Dict[str, Any]):
                     url = fusion_sprite_url(a, b)
                     st.image(url, width=112)
                     st.caption("fused")
-            # Player 2 side
             with cols[1]:
                 a2 = int(entry["player2"]["a_num"])
                 b2 = int(entry["player2"]["b_num"])
-                row2 = st.columns([1,1,1.2])
+                row2 = st.columns([1, 1, 1.2])
                 with row2[0]:
                     s = sprite_for(df, a2)
                     if s: st.image(s, width=64)
