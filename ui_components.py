@@ -83,12 +83,12 @@ def pairing_tile(df: pd.DataFrame, pairing: Dict[str, Any]):
             s1 = sprite_for(df, pairing["player1"]["number"])
             if s1:
                 clickable_sprite(s1, ifdex_mon_url(pairing["player1"]["number"]), width=64)
-            st.caption(f"#{int(pairing['player1']['number']):03d}")
+            n1 = int(pairing['player1']['number']); st.caption(f"#{n1:03d} {name_for(df, n1)}")
         with c[1]:
             s2 = sprite_for(df, pairing["player2"]["number"])
             if s2:
                 clickable_sprite(s2, ifdex_mon_url(pairing["player2"]["number"]), width=64)
-            st.caption(f"#{int(pairing['player2']['number']):03d}")
+            n2 = int(pairing['player2']['number']); st.caption(f"#{n2:03d} {name_for(df, n2)}")
         enc = pairing["player1"].get("encounter") or pairing["player2"].get("encounter") or ""
         if enc:
             st.caption(enc)
@@ -170,11 +170,27 @@ def graveyard_card(df: pd.DataFrame, entry: Dict[str, Any]):
             c = st.columns(2)
             with c[0]:
                 s1 = sprite_for(df, entry["player1"]["number"])
-                if s1: st.image(s1, width=96)
-                st.caption(f"#{int(entry['player1']['number']):03d}")
+                if s1: st.image(s1, width=72)
+                n1 = int(entry['player1']['number']); st.caption(f"#{n1:03d} {name_for(df, n1)}")
             with c[1]:
                 s2 = sprite_for(df, entry["player2"]["number"])
-                if s2: st.image(s2, width=96)
-                st.caption(f"#{int(entry['player2']['number']):03d}")
+                if s2: st.image(s2, width=72)
+                n2 = int(entry['player2']['number']); st.caption(f"#{n2:03d} {name_for(df, n2)}")
         else:
             st.write(entry)
+
+def fusion_tile(df: pd.DataFrame, fusion: Dict[str, Any]):
+    with st.container(border=True):
+        st.markdown(f"**{fusion['id']}**")
+        a = fusion["player1"]["a"]; b = fusion["player1"]["b"]
+        a2 = fusion["player2"]["a"]; b2 = fusion["player2"]["b"]
+
+        cols = st.columns(2)
+        with cols[0]:
+            url = fusion_sprite_url(a["number"], b["number"])
+            clickable_sprite(url, ifdex_fusion_url(a["number"], b["number"]), width=96,
+                             caption=f"{a['name']} + {b['name']}")
+        with cols[1]:
+            url2 = fusion_sprite_url(a2["number"], b2["number"])
+            clickable_sprite(url2, ifdex_fusion_url(a2["number"], b2["number"]), width=96,
+                             caption=f"{a2['name']} + {b2['name']}")

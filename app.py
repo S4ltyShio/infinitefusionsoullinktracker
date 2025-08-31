@@ -6,7 +6,7 @@ from storage import (
     load_pokedex, load_state, save_state, name_for,
     search_options, parse_number_from_option, get_evolutions
 )
-from ui_components import pairing_tile, fusion_card, graveyard_card
+from ui_components import pairing_tile, fusion_card, fusion_tile, graveyard_card
 
 st.set_page_config(page_title="Soullink Fusion Tracker", page_icon="🧬", layout="wide")
 
@@ -307,18 +307,31 @@ with tabs[0]:
             st.rerun()
 
     st.divider()
+    
     st.subheader("Current pairings")
     if not state["pairings"]:
         st.info("No pairings yet.")
     else:
         show_only_unfused = st.checkbox("Show only unfused", value=False)
+        search_q = st.text_input("Search pairings", key="pairings_search", placeholder="ID, name, number, or encounter")
         pairs = [p for p in state["pairings"] if not p.get("dead")]
         if show_only_unfused:
             pairs = [p for p in pairs if not (p["player1"]["used"] or p["player2"]["used"])]
+        if search_q:
+            q = search_q.strip().lower()
+            def _pmatch(p):
+                fields = [
+                    p.get("id",""),
+                    p["player1"].get("name",""), p["player2"].get("name",""),
+                    f"{int(p['player1']['number']):03d}", f"{int(p['player2']['number']):03d}",
+                    str(p["player1"].get("encounter","")), str(p["player2"].get("encounter",""))
+                ]
+                return any(q in str(x).lower() for x in fields)
+            pairs = [p for p in pairs if _pmatch(p)]
 
-        for i in range(0, len(pairs), 3):
-            cols = st.columns(3)
-            for j in range(3):
+        for i in range(0, len(pairs), 6):
+            cols = st.columns(6)
+            for j in range(6):
                 k = i + j
                 if k >= len(pairs):
                     continue
@@ -366,20 +379,35 @@ with tabs[1]:
         st.rerun()
 
     st.divider()
+    
     st.subheader("Fusions")
     if not state["fusions"]:
         st.info("No fusions yet.")
     else:
         items = list(state["fusions"])
-        for i in range(0, len(items), 2):
-            row = st.columns(2)
-            for j in range(2):
+        search_f = st.text_input("Search fusions", key="fusions_search", placeholder="ID or Pokémon names")
+        if search_f:
+            qf = search_f.strip().lower()
+            def _fmatch(f):
+                names = [
+                    f["id"],
+                    f["player1"]["a"]["name"], f["player1"]["b"]["name"],
+                    f["player2"]["a"]["name"], f["player2"]["b"]["name"],
+                    f"{int(f['player1']['a']['number']):03d}", f"{int(f['player1']['b']['number']):03d}",
+                    f"{int(f['player2']['a']['number']):03d}", f"{int(f['player2']['b']['number']):03d}",
+                ]
+                return any(qf in str(x).lower() for x in names)
+            items = [f for f in items if _fmatch(f)]
+
+        for i in range(0, len(items), 6):
+            row = st.columns(6)
+            for j in range(6):
                 idx = i + j
                 if idx >= len(items):
                     continue
                 f = items[idx]
                 with row[j]:
-                    fusion_card(pokedex, f)
+                    fusion_tile(pokedex, f)
                     btns = st.columns(2)
                     with btns[0]:
                         if st.button(f"Unfuse {f['id']}", key=f"unfuse_{f['id']}"):
@@ -395,12 +423,32 @@ with tabs[2]:
     if not state.get("graveyard"):
         st.info("Graveyard is empty.")
     else:
-        for g in list(reversed(state["graveyard"])):
-            graveyard_card(pokedex, g)
-            if g.get("kind") == "pairing":
-                if st.button(f"Delete {g['id']}", key=f"del_grave_{g['id']}"):
-                    delete_graveyard_pairing(g['id'])
-                    st.rerun()
+        grave_items = list(reversed(state["graveyard"]))
+        search_g = st.text_input("Search graveyard", key="grave_search", placeholder="ID, name, or number")
+        if search_g:
+            qg = search_g.strip().lower()
+            def _gmatch(g):
+                if g.get("kind") == "pairing":
+                    n1 = int(g["player1"]["number"]); n2 = int(g["player2"]["number"])
+                    fields = [g.get("id",""), f"{n1:03d}", f"{n2:03d}"]
+                    fields += [name_for(pokedex, n1), name_for(pokedex, n2)]
+                    return any(qg in str(x).lower() for x in fields)
+                return False
+            grave_items = [g for g in grave_items if _gmatch(g)]
+
+        for i in range(0, len(grave_items), 6):
+            cols = st.columns(6)
+            for j in range(6):
+                k = i + j
+                if k >= len(grave_items):
+                    continue
+                g = grave_items[k]
+                with cols[j]:
+                    graveyard_card(pokedex, g)
+                    if g.get("kind") == "pairing":
+                        if st.button(f"Delete {g['id']}", key=f"del_grave_{g['id']}"):
+                            delete_graveyard_pairing(g['id'])
+                            st.rerun()
 
 with tabs[3]:
     st.subheader("Settings")
