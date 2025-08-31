@@ -96,6 +96,38 @@ def pairing_tile(df: pd.DataFrame, pairing: Dict[str, Any]):
         p2u = "Fused" if pairing["player2"].get("used") else "Unfused"
         st.caption(f"P1: {p1u} · P2: {p2u}")
 
+def team_pokemon_card(df: pd.DataFrame, pokemon: Dict[str, Any]):
+    with st.container(border=True):
+        source = pokemon.get("source", "Paired")
+        
+        if source == "Fusion":
+            num_a = pokemon["number_a"]
+            num_b = pokemon["number_b"]
+            name = pokemon["name"]
+            fusion_id = pokemon["fusion_id"]
+            
+            cols = st.columns([1, 2])
+            with cols[0]:
+                sprite_url = fusion_sprite_url(num_a, num_b)
+                clickable_sprite(sprite_url, ifdex_fusion_url(num_a, num_b), width=120)
+            with cols[1]:
+                st.markdown(f"**{name}**")
+                st.caption(f"Fusion: {fusion_id}")
+        else:  # Paired pokemon
+            number = pokemon["number"]
+            cols = st.columns([1, 2])
+            with cols[0]:
+                sprite = sprite_for(df, number)
+                if sprite:
+                    clickable_sprite(sprite, ifdex_mon_url(number), width=96)
+            with cols[1]:
+                nm = name_for(df, number)
+                st.markdown(f"**#{int(number):03d} {nm}**")
+                if pokemon.get("encounter"):
+                    st.caption(f'Encounter: {pokemon.get("encounter")}')
+                if pokemon.get("pairing_id"):
+                    st.caption(f'Pairing: {pokemon.get("pairing_id")}')
+
 def fusion_card(df: pd.DataFrame, fusion: Dict[str, Any]):
     with st.container(border=True):
         st.markdown(f"**Fusion {fusion['id']}**")
@@ -194,3 +226,4 @@ def fusion_tile(df: pd.DataFrame, fusion: Dict[str, Any]):
             url2 = fusion_sprite_url(a2["number"], b2["number"])
             clickable_sprite(url2, ifdex_fusion_url(a2["number"], b2["number"]), width=96,
                              caption=f"{a2['name']} + {b2['name']}")
+

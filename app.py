@@ -1,12 +1,13 @@
 import streamlit as st
 from datetime import datetime
 from typing import Dict, Any, List, Tuple
+import pandas as pd
 
 from storage import (
     load_pokedex, load_state, save_state, name_for,
     search_options, parse_number_from_option, get_evolutions
 )
-from ui_components import pairing_tile, fusion_card, fusion_tile, graveyard_card
+from ui_components import pairing_tile, fusion_tile, graveyard_card, team_pokemon_card
 
 st.set_page_config(page_title="Soullink Fusion Tracker", page_icon="🧬", layout="wide")
 
@@ -20,6 +21,8 @@ def get_state() -> Dict[str, Any]:
     st.session_state["state"].setdefault("graveyard", [])
     st.session_state["state"].setdefault("pairings", [])
     st.session_state["state"].setdefault("fusions", [])
+    st.session_state["state"].setdefault("player1_team", [])
+    st.session_state["state"].setdefault("player2_team", [])
     st.session_state["state"].setdefault("next_pair_id", 1)
     st.session_state["state"].setdefault("next_fusion_id", 1)
     return st.session_state["state"]
@@ -47,6 +50,34 @@ def available_player_pokemon(player_idx: int) -> List[Dict[str, Any]]:
         for p in get_state()["pairings"]
         if not p.get("dead") and not p[key]["used"]
     ]
+
+def get_all_player_pokemon(player_idx: int) -> List[Dict[str, Any]]:
+    player_key = "player1" if player_idx == 0 else "player2"
+    all_pokemon = []
+    
+    # From pairings (unfused and available)
+    for p in get_state()["pairings"]:
+        if not p.get("dead") and not p[player_key]["used"]:
+            mon = p[player_key].copy()
+            mon["pairing_id"] = p["id"]
+            mon["source"] = "Paired"
+            mon["uid"] = f'{p["id"]}_{player_key}'
+            all_pokemon.append(mon)
+            
+    # From fusions
+    for f in get_state()["fusions"]:
+        fused_mon_data = f[player_key]
+        mon = {
+            "source": "Fusion",
+            "fusion_id": f["id"],
+            "uid": f'{f["id"]}_{player_key}',
+            "name": f"{fused_mon_data['a']['name']} / {fused_mon_data['b']['name']}",
+            "number_a": fused_mon_data['a']['number'],
+            "number_b": fused_mon_data['b']['number'],
+        }
+        all_pokemon.append(mon)
+        
+    return all_pokemon
 
 def create_fusion_from_player1(p1_pair_id_a: str, p1_pair_id_b: str):
     state = get_state()
@@ -234,7 +265,7 @@ def evolve_pairing_mon(pid: str, side: str, new_number: int):
     persist()
     st.success(f"Evolved {pid} {side} to #{int(new_number):03d} {p[side]['name']}")
 
-def evolution_controls(pid: str, side: str, current_number: int):
+def evolution_controls(pid: str, side: str, current_number: int, key_prefix: str = ""):
     """Inline UI for evolving a single Pokémon."""
     evos: List[Tuple[int, str]] = get_evolutions(pokedex, int(current_number))
     if not evos:
@@ -243,7 +274,7 @@ def evolution_controls(pid: str, side: str, current_number: int):
 
     if len(evos) == 1:
         n, nm = evos[0]
-        if st.button(f"Evolve {side[-1]} → #{n:03d}", key=f"evolve_one_{pid}_{side}"):
+        if st.button(f"Evolve {side[-1]} → #{n:03d}", key=f"{key_prefix}evolve_one_{pid}_{side}"):
             evolve_pairing_mon(pid, side, n)
             st.rerun()
         return
@@ -253,11 +284,11 @@ def evolution_controls(pid: str, side: str, current_number: int):
     sel = st.selectbox(
         f"Evolve {side[-1]}",
         labels,
-        key=f"evo_sel_{pid}_{side}",
+        key=f"{key_prefix}evo_sel_{pid}_{side}",
         index=None,
         placeholder="Choose evolution",
     )
-    if st.button("Confirm evolve", key=f"evo_confirm_{pid}_{side}", disabled=sel is None):
+    if st.button("Confirm evolve", key=f"{key_prefix}evo_confirm_{pid}_{side}", disabled=sel is None):
         idx = labels.index(sel)
         n, _ = evos[idx]
         evolve_pairing_mon(pid, side, n)
@@ -269,6 +300,8 @@ def reset_state_confirm():
             "pairings": [],
             "fusions": [],
             "graveyard": [],
+            "player1_team": [],
+            "player2_team": [],
             "next_pair_id": 1,
             "next_fusion_id": 1,
             "players": ["Player 1", "Player 2"],
@@ -277,6 +310,144 @@ def reset_state_confirm():
         persist()
         st.success("State cleared.")
 
+# ---------------- Team UI ----------------
+
+def team_management_ui(player_idx: int, pokedex_df: pd.DataFrame):
+    player_name = f"Player {player_idx + 1}"
+    team_key = f"player{player_idx + 1}_team"
+    state = get_state()
+    
+    st.subheader(f"{player_name}'s Team")
+
+    # --- Selection ---
+    available_mons = get_all_player_pokemon(player_idx)
+    team_uids = {mon['uid'] for mon in state[team_key]}
+    selectable_mons = [m for m in available_mons if m['uid'] not in team_uids]
+    
+    # Create display labels for the selectbox
+    options = {}
+    for p in selectable_mons:
+        if p.get('source') == 'Fusion':
+            label = f"{p['name']} (Fusion {p['fusion_id']})"
+        else: # Paired
+            label = f"#{p['number']:03d} {p['name']} (Pairing {p['pairing_id']})"
+        options[label] = p
+
+    if len(state[team_key]) >= 6:
+        st.warning("Team is full.")
+    else:
+        selected_label = st.selectbox(
+            f"Add Pokémon to {player_name}'s team",
+            options.keys(),
+            key=f"team_select_p{player_idx}",
+            index=None,
+            placeholder="Choose a Pokémon..."
+        )
+
+        if st.button(f"Add to {player_name}'s Team", key=f"team_add_p{player_idx}", disabled=not selected_label):
+            selected_pokemon = options[selected_label]
+            source = selected_pokemon.get("source")
+
+            # --- Logic for adding a FUSION to the team ---
+            if source == "Fusion":
+                fusion_id = selected_pokemon.get('fusion_id')
+                fusion = next((f for f in get_state()['fusions'] if f['id'] == fusion_id), None)
+                if fusion:
+                    state[team_key].append(selected_pokemon) # Add to current player's team
+
+                    # Construct and add the other player's fusion
+                    other_player_idx = 1 - player_idx
+                    other_team_key = f"player{other_player_idx + 1}_team"
+                    other_player_key = "player1" if other_player_idx == 0 else "player2"
+                    
+                    other_fused_data = fusion[other_player_key]
+                    other_fusion_mon = {
+                        "source": "Fusion",
+                        "fusion_id": fusion["id"],
+                        "uid": f'{fusion["id"]}_{other_player_key}',
+                        "name": f"{other_fused_data['a']['name']} / {other_fused_data['b']['name']}",
+                        "number_a": other_fused_data['a']['number'],
+                        "number_b": other_fused_data['b']['number'],
+                    }
+                    
+                    other_team_uids = {mon['uid'] for mon in state[other_team_key]}
+                    if len(state[other_team_key]) < 6 and other_fusion_mon['uid'] not in other_team_uids:
+                        state[other_team_key].append(other_fusion_mon)
+                    
+                    persist()
+                    st.rerun()
+                else:
+                    st.error("Could not find the associated fusion.")
+            
+            # --- Logic for adding a PAIRED mon to the team (existing logic) ---
+            else: 
+                pairing_id = selected_pokemon.get('pairing_id')
+                pairing = next((p for p in get_state()['pairings'] if p['id'] == pairing_id), None)
+                if pairing:
+                    state[team_key].append(selected_pokemon)
+
+                    other_player_idx = 1 - player_idx
+                    other_team_key = f"player{other_player_idx + 1}_team"
+                    other_player_key = "player1" if other_player_idx == 0 else "player2"
+                    other_pokemon = pairing[other_player_key].copy()
+                    other_pokemon["pairing_id"] = pairing["id"]
+                    other_pokemon["source"] = "Paired"
+                    other_pokemon["uid"] = f'{pairing["id"]}_{other_player_key}'
+                    
+                    other_team_uids = {mon['uid'] for mon in state[other_team_key]}
+                    if len(state[other_team_key]) < 6 and other_pokemon['uid'] not in other_team_uids:
+                        state[other_team_key].append(other_pokemon)
+                    persist()
+                    st.rerun()
+                else:
+                    st.error("Could not find the associated pairing.")
+
+    st.divider()
+
+    # --- Display Team ---
+    if not state[team_key]:
+        st.info(f"{player_name} has no Pokémon in their team yet.")
+    else:
+        for i in range(0, 6, 2):
+            cols = st.columns(2)
+            for j in range(2):
+                idx = i + j
+                if idx < len(state[team_key]):
+                    with cols[j]:
+                        pokemon = state[team_key][idx]
+                        team_pokemon_card(pokedex_df, pokemon)
+
+                        # --- Evolution Controls (only for paired) ---
+                        if pokemon.get('source', 'Paired') == 'Paired':
+                            pokemon_pairing_id = pokemon.get('pairing_id')
+                            pokemon_uid = pokemon.get('uid')
+                            if pokemon_pairing_id and pokemon_uid:
+                                side = pokemon_uid.split('_')[-1]
+                                number = pokemon.get('number')
+                                if side in ('player1', 'player2') and number is not None:
+                                    evolution_controls(
+                                        pokemon_pairing_id, side, number, 
+                                        key_prefix=f"team_{pokemon_uid}_"
+                                    )
+
+                        # --- Remove Button (handles both types) ---
+                        if st.button("Remove", key=f"remove_p{player_idx}_{pokemon['uid']}"):
+                            uid_to_remove = pokemon.get('uid')
+                            state[team_key] = [p for p in state[team_key] if p.get('uid') != uid_to_remove]
+
+                            other_player_idx = 1 - player_idx
+                            other_team_key = f"player{other_player_idx + 1}_team"
+                            current_player_key = uid_to_remove.split('_')[-1]
+                            other_player_key = 'player2' if current_player_key == 'player1' else 'player1'
+                            
+                            id_part = uid_to_remove.split('_')[0]
+                            paired_uid_to_remove = f"{id_part}_{other_player_key}"
+                            state[other_team_key] = [p for p in state[other_team_key] if p.get('uid') != paired_uid_to_remove]
+
+                            persist()
+                            st.rerun()
+
+
 # ---------------- App ----------------
 
 pokedex = get_pokedex()
@@ -284,7 +455,7 @@ state = get_state()
 recompute_used_flags()
 
 st.title("Pokémon Infinite Fusion Soullink Tracker")
-tabs = st.tabs(["Pairings", "Fusions", "Graveyard", "Settings"])
+tabs = st.tabs(["Pairings", "Fusions", "Team", "Graveyard", "Settings"])
 
 with tabs[0]:
     st.subheader("Add a new pairing")
@@ -419,6 +590,14 @@ with tabs[1]:
                             st.rerun()
 
 with tabs[2]:
+    st.subheader("Current Team")
+    main_cols = st.columns(2)
+    with main_cols[0]:
+        team_management_ui(0, pokedex)
+    with main_cols[1]:
+        team_management_ui(1, pokedex)
+
+with tabs[3]:
     st.subheader("Graveyard")
     if not state.get("graveyard"):
         st.info("Graveyard is empty.")
@@ -450,7 +629,8 @@ with tabs[2]:
                             delete_graveyard_pairing(g['id'])
                             st.rerun()
 
-with tabs[3]:
+with tabs[4]:
     st.subheader("Settings")
     reset_state_confirm()
     st.caption("State file: data/state.json")
+
